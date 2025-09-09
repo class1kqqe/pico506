@@ -1,0 +1,112 @@
+.program st506_wrgt
+.fifo txrx
+.in 32 left auto 32
+.out 32 left auto 32
+
+// X: Address of Trigger Control Block
+// Y: Address of Abort Control Block
+
+.wrap_target
+	// wait for WRITE_GATE=1
+	wait 1 pin 0
+	// push X to RX FIFO
+	in x, 32
+	// wait for WRITE_GATE=0
+	wait 0 pin 0
+	// push Y to RX FIFO
+	in y, 32
+.wrap
+
+% c-sdk {
+static inline void st506_wrgt_program_init(PIO pio, uint sm, uint offset, uint pin_write_gate) {
+	pio_sm_config c = st506_wrgt_program_get_default_config(offset);
+	sm_config_set_in_pin_base(&c, pin_write_gate);
+	pio_sm_init(pio, sm, offset, &c);
+}
+
+//          +0x0       +0x4         +0x8         +0xC (Trigger)
+// Alias 0: READ_ADDR  WRITE_ADDR   TRANS_COUNT  CTRL
+// Alias 1: CTRL       READ_ADDR    WRITE_ADDR   TRANS_COUNT
+// Alias 2: CTRL       TRANS_COUNT  READ_ADDR    WRITE_ADDR
+// Alias 3: CTRL       WRITE_ADDR   TRANS_COUNT  READ_ADDR
+
+static uint st506_wrgt_ctrl_chan;
+static uint st506_wrgt_work_chan;
+static uint st506_wrgt_trig_chan;
+static uint st506_wrgt_wrdt_mask;
+
+static uint st506_wrgt_trigger_ctrl_block[8][2];
+static uint st506_wrgt_abort_ctrl_block[2][2];
+static uint st506_wrgt_discard;
+
+static inline void st506_wrgt_program_start(
+	PIO pio,
+	uint sm,
+	uint rddt_chan,
+	uint wrdt_chan,
+	const void *wrdt_pio_rxf
+) {
+	st506_wrgt_ctrl_chan = dma_claim_unused_channel(true);
+	st506_wrgt_work_chan = dma_claim_unused_channel(true);
+	st506_wrgt_trig_chan = dma_claim_unused_channel(true);
+	st506_wrgt_wrdt_mask = 1 << wrdt_chan;
+
+	// initialize the Control Channel and Worker Channel
+	st506_pio_init_ctrl_chan(st506_wrgt_ctrl_chan, st506_wrgt_work_chan);
+
+	// Trigger Control Block
+	//   -> unblock the WRDT PIO as soon as possible
+	//   -> copy the data write address as soon as possible
+	//   -> discard 4 remaining words from the WRDT PIO (for a total of 5 - ISR should also be discarded)
+	//   -> start the channel only after clearing all words from FIFO (garbage)
+	// 1. Write Channel's PIO RX FIFO -> discard
+	st506_wrgt_trigger_ctrl_block[0][0] = (uint)wrdt_pio_rxf;
+	st506_wrgt_trigger_ctrl_block[0][1] = (uint)&st506_wrgt_discard;
+	// 2. Read Channel's read address -> Write Channel's write address
+	st506_wrgt_trigger_ctrl_block[1][0] = (uint)&dma_hw->ch[rddt_chan].read_addr;
+	st506_wrgt_trigger_ctrl_block[1][1] = (uint)&dma_hw->ch[wrdt_chan].write_addr;
+	// 3./4./5./6. Write Channel's PIO RX FIFO -> discard
+	memcpy(&st506_wrgt_trigger_ctrl_block[2], &st506_wrgt_trigger_ctrl_block[0], 2 * sizeof(uint));
+	memcpy(&st506_wrgt_trigger_ctrl_block[3], &st506_wrgt_trigger_ctrl_block[0], 2 * sizeof(uint));
+	memcpy(&st506_wrgt_trigger_ctrl_block[4], &st506_wrgt_trigger_ctrl_block[0], 2 * sizeof(uint));
+	memcpy(&st506_wrgt_trigger_ctrl_block[5], &st506_wrgt_trigger_ctrl_block[0], 2 * sizeof(uint));
+	// 7. Read Channel's transfer count -> Write Channel's transfer count (trigger)
+	st506_wrgt_trigger_ctrl_block[6][0] = (uint)&dma_hw->ch[rddt_chan].transfer_count;
+	st506_wrgt_trigger_ctrl_block[6][1] = (uint)&dma_hw->ch[wrdt_chan].al1_transfer_count_trig;
+	// 8. Finish by writing zero to the trigger register
+	st506_wrgt_trigger_ctrl_block[7][0] = 0;
+	st506_wrgt_trigger_ctrl_block[7][1] = 0;
+
+	// Abort Control Block
+	// 1. Write Channel's number -> DMA's CHAN_ABORT register
+	st506_wrgt_abort_ctrl_block[0][0] = (uint)&st506_wrgt_wrdt_mask;
+	st506_wrgt_abort_ctrl_block[0][1] = DMA_BASE + DMA_CHAN_ABORT_OFFSET;
+	// 2. Finish by writing zero to the trigger register
+	st506_wrgt_abort_ctrl_block[1][0] = 0;
+	st506_wrgt_abort_ctrl_block[1][1] = 0;
+
+	// Trigger Channel
+	// - receive Control Block addresses from the PIO and trigger/abort the Control Channel
+	dma_channel_config trig_config = dma_channel_get_default_config(st506_wrgt_trig_chan);
+	channel_config_set_transfer_data_size(&trig_config, DMA_SIZE_32);
+	channel_config_set_read_increment(&trig_config, false);
+	channel_config_set_write_increment(&trig_config, false);
+	channel_config_set_dreq(&trig_config, pio_get_dreq(pio, sm, false));
+	dma_channel_configure(
+		st506_wrgt_trig_chan,
+		&trig_config,
+		/* write_addr= */ &dma_hw->ch[st506_wrgt_ctrl_chan].al3_read_addr_trig,
+		/* read_addr= */ &pio->rxf[sm],
+		/* transfer_count= */ 0xFFFFFFFF,
+		/* trigger= */ true
+	);
+
+	// initialize X and Y as pointers to the Control Blocks
+	pio_sm_put_blocking(pio, sm, (uint)&st506_wrgt_trigger_ctrl_block);
+	pio_sm_exec_wait_blocking(pio, sm, pio_encode_out(pio_x, 32));
+	pio_sm_put_blocking(pio, sm, (uint)&st506_wrgt_abort_ctrl_block);
+	pio_sm_exec_wait_blocking(pio, sm, pio_encode_out(pio_y, 32));
+
+	pio_sm_set_enabled(pio, sm, true);
+}
+%}

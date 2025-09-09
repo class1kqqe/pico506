@@ -1,0 +1,240 @@
+.program rll_2of7_st
+.fifo txrx
+.in 32 left auto 32
+.out 32 left auto 32
+
+// Input (NRZ) | Output (RLL)
+// ------------|-------------
+// `11`        | `1000`
+// `011`       | `001000`
+// `0011`      | `00001000`
+// `10`        | `0100`
+// `010`       | `100100` (*)
+// `0010`      | `00100100`
+// `000`       | `000100` (*)
+
+// 000  -> 00 01 00 (*)
+// 0010 -> 00 10 01 00
+// 010  -> 10 01 00 (*)
+// 10   -> 01 00
+// 0011 -> 00 00 10 00
+// 011  -> 00 10 00
+// 11   -> 10 00
+
+.wrap_target
+	set y, 0b01
+
+bits:
+	out x, 1
+	jmp !x bits_0
+
+bits_1:
+	out x, 1
+	jmp !x push_01_00 // 10
+	jmp push_10_00    // 11
+
+bits_0:
+	out x, 1
+	jmp !x bits_00
+
+bits_01:
+	out x, 1
+	jmp !x push_10_01_00 // 010
+	jmp push_00_10_00    // 011
+
+bits_00:
+	out x, 1
+	jmp !x push_00_01_00 // 000
+
+bits_001:
+	out x, 1
+	jmp !x push_00_10_01_00 // 0010
+	// jmp push_00_00_10_00 // 0011
+
+// ----------------------------------------
+
+push_00_00_10_00:
+	// 0011 -> 00 00 10 00
+	in null, 2
+
+push_00_10_00:
+	// 011 -> 00 10 00
+	in null, 2
+
+push_10_00:
+	// 11 -> 10 00
+	set y, 0b10
+	jmp push_y_00
+
+// ----------------------------------------
+
+push_00_01_00:
+	// 000 -> 00 01 00
+	in null, 2
+	jmp push_y_00
+
+push_00_10_01_00:
+	// 0010 -> 00 10 01 00
+	in null, 2
+
+push_10_01_00:
+	// 010 -> 10 01 00
+	set x, 0b10
+	in x, 2
+
+push_01_00:
+	// 10 -> 01 00
+	// fall through
+
+// ----------------------------------------
+
+push_y_00:
+	// 10 -> 01 00
+	// 11 -> 10 00
+	in y, 2
+
+push_00:
+	in null, 2
+.wrap
+
+.program rll_2of7_wd
+.fifo txrx
+.in 32 left auto 32
+.out 32 left auto 32
+
+// Input (NRZ) | Output (RLL)
+// ------------|-------------
+// `11`        | `1000`
+// `011`       | `001000`
+// `0011`      | `00001000`
+// `10`        | `0100`
+// `010`       | `000100` (*)
+// `0010`      | `00100100`
+// `000`       | `100100` (*)
+
+// 000  -> 10 01 00 (*)
+// 0010 -> 00 10 01 00
+// 010  -> 00 01 00 (*)
+// 10   -> 01 00
+// 0011 -> 00 00 10 00
+// 011  -> 00 10 00
+// 11   -> 10 00
+
+.wrap_target
+	set y, 0b01
+
+bits:
+	out x, 1
+	jmp !x bits_0
+
+bits_1:
+	out x, 1
+	jmp !x push_01_00 // 10
+	jmp push_10_00    // 11
+
+bits_0:
+	out x, 1
+	jmp !x bits_00
+
+bits_01:
+	out x, 1
+	jmp !x push_00_01_00 // 010
+	jmp push_00_10_00    // 011
+
+bits_00:
+	out x, 1
+	jmp !x push_10_01_00 // 000
+
+bits_001:
+	out x, 1
+	jmp !x push_00_10_01_00 // 0010
+	// jmp push_00_00_10_00 // 0011
+
+// ----------------------------------------
+
+push_00_00_10_00:
+	// 0011 -> 00 00 10 00
+	in null, 2
+
+push_00_10_00:
+	// 011 -> 00 10 00
+	in null, 2
+
+push_10_00:
+	// 11 -> 10 00
+	set y, 0b10
+	jmp push_y_00
+
+// ----------------------------------------
+
+push_00_01_00:
+	// 010 -> 00 01 00
+	in null, 2
+	jmp push_y_00
+
+push_00_10_01_00:
+	// 0010 -> 00 10 01 00
+	in null, 2
+
+push_10_01_00:
+	// 000 -> 10 01 00
+	set x, 0b10
+	in x, 2
+
+push_01_00:
+	// 10 -> 01 00
+	// fall through
+
+// ----------------------------------------
+
+push_y_00:
+	// 10 -> 01 00
+	// 11 -> 10 00
+	in y, 2
+
+push_00:
+	in null, 2
+.wrap
+
+% c-sdk {
+static inline void rll_2of7_program_run(
+	PIO pio,
+	uint sm,
+	uint offset,
+	const void *src,
+	uint src_words,
+	void *dst,
+	uint dst_words
+) {
+	pio_sm_config c = rll_2of7_st_program_get_default_config(offset);
+	sm_config_set_clkdiv_int_frac8(&c, 1, 0);
+	pio_sm_init(pio, sm, offset, &c);
+	pio_sm_set_enabled(pio, sm, true);
+
+	int tx_chan = dma_claim_unused_channel(true);
+	int rx_chan = dma_claim_unused_channel(true);
+
+	dma_channel_config tx_config = dma_channel_get_default_config(tx_chan);
+	channel_config_set_transfer_data_size(&tx_config, DMA_SIZE_32);
+	channel_config_set_read_increment(&tx_config, true);
+	channel_config_set_write_increment(&tx_config, false);
+	channel_config_set_dreq(&tx_config, pio_get_dreq(pio, sm, true));
+	channel_config_set_bswap(&tx_config, true);
+	dma_channel_configure(tx_chan, &tx_config, &pio->txf[sm], src, src_words, true);
+
+	dma_channel_config rx_config = dma_channel_get_default_config(rx_chan);
+	channel_config_set_transfer_data_size(&rx_config, DMA_SIZE_32);
+	channel_config_set_read_increment(&rx_config, false);
+	channel_config_set_write_increment(&rx_config, true);
+	channel_config_set_dreq(&rx_config, pio_get_dreq(pio, sm, false));
+	channel_config_set_bswap(&rx_config, true);
+	dma_channel_configure(rx_chan, &rx_config, dst, &pio->rxf[sm], dst_words, true);
+
+	dma_channel_wait_for_finish_blocking(rx_chan);
+
+	dma_channel_cleanup(tx_chan);
+	dma_channel_unclaim(tx_chan);
+	dma_channel_cleanup(rx_chan);
+	dma_channel_unclaim(rx_chan);
+}
+%}

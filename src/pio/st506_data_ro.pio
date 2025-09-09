@@ -1,0 +1,182 @@
+.program st506_data
+.fifo tx
+.out 1 left auto 32
+.set 1
+.side_set 2 opt
+
+// 'out' mapping: READ
+// 'set' mapping: READ
+// 'side' mapping: INDEX, SERVO_GATE
+
+.wrap_target
+	// fetch INDEX marker into X
+	out x, 1
+	jmp !x index_low
+
+index_high:
+	// clear READ, set SERVO_GATE, set INDEX
+	set pins, 0 side 0b11
+	jmp fetch_index
+index_low:
+	// clear READ, set SERVO_GATE, clear INDEX
+	set pins, 0 side 0b01
+
+fetch_index:
+	// fetch pulse length into X
+	out x, 15
+	// loop during the pulse
+loop_index:
+	nop [3]
+	jmp x-- loop_index [3]
+
+fetch_data:
+	// fetch data length into X, clear INDEX and SERVO_GATE
+	out x, 16 side 0b00
+	// loop while outputting data
+loop_data:
+	// normal logic:
+	out pins, 1 [3]
+	jmp x-- loop_data [3]
+
+.wrap
+
+% c-sdk {
+static inline void st506_data_program_init(
+	PIO pio,
+	uint sm,
+	uint offset,
+	uint pin_read,
+	uint pin_servo_gate,
+	uint freq
+) {
+	float clkdiv	= (float)clock_get_hz(clk_sys) / (float)(freq * 8);
+	pio_sm_config c = st506_data_program_get_default_config(offset);
+	sm_config_set_clkdiv(&c, clkdiv);
+	sm_config_set_out_pin_base(&c, pin_read);
+	sm_config_set_set_pin_base(&c, pin_read);
+	sm_config_set_sideset_pin_base(&c, pin_servo_gate);
+	pio_sm_init(pio, sm, offset, &c);
+	pio_sm_set_consecutive_pindirs(pio, sm, pin_read, 1, true);
+	pio_sm_set_consecutive_pindirs(pio, sm, pin_servo_gate, 2, true);
+}
+
+//          +0x0       +0x4         +0x8         +0xC (Trigger)
+// Alias 0: READ_ADDR  WRITE_ADDR   TRANS_COUNT  CTRL
+// Alias 1: CTRL       READ_ADDR    WRITE_ADDR   TRANS_COUNT
+// Alias 2: CTRL       TRANS_COUNT  READ_ADDR    WRITE_ADDR
+// Alias 3: CTRL       WRITE_ADDR   TRANS_COUNT  READ_ADDR
+
+static __attribute__((aligned(16))) uint32_t st506_data_ctrl_block[2];
+static volatile void *st506_data_ctrl_write_addr;
+
+static int st506_data_ctrl_chan;
+static int st506_data_data_chan;
+static int st506_data_restart_chan;
+
+static inline void st506_data_program_start(PIO pio, uint sm, const void *data_addr, uint data_cnt) {
+	pio_sm_set_enabled(pio, sm, true);
+
+	int ctrl_chan = st506_data_ctrl_chan = dma_claim_unused_channel(true);
+	int data_chan = st506_data_data_chan = dma_claim_unused_channel(true);
+	int restart_chan = st506_data_restart_chan = dma_claim_unused_channel(true);
+
+	st506_data_ctrl_block[0]   = data_cnt;			  // TRANS_COUNT
+	st506_data_ctrl_block[1]   = (uint32_t)data_addr; // READ_ADDR (Trigger)
+	st506_data_ctrl_write_addr = &dma_hw->ch[data_chan].al3_transfer_count;
+
+	// Control Channel
+	// - copy the control block to trigger the Data Channel
+	// - wrap read address - write address will be reset by the Restart Channel
+	dma_channel_config ctrl_config = dma_channel_get_default_config(ctrl_chan);
+	channel_config_set_transfer_data_size(&ctrl_config, DMA_SIZE_32);
+	channel_config_set_read_increment(&ctrl_config, true);
+	channel_config_set_write_increment(&ctrl_config, true);
+	channel_config_set_ring(&ctrl_config, false, 3); // (1<<3) = 8 bytes
+	dma_channel_configure(
+		ctrl_chan,
+		&ctrl_config,
+		/* write_addr= */ st506_data_ctrl_write_addr,
+		/* read_addr= */ st506_data_ctrl_block,
+		/* transfer_count= */ sizeof(st506_data_ctrl_block) / sizeof(*st506_data_ctrl_block),
+		/* trigger= */ false
+	);
+
+	// Data Channel
+	// - copy data to PIO's TX FIFO
+	// - swap endianness of transferred data
+	// - trigger the Restart Channel after finished
+	dma_channel_config data_config = dma_channel_get_default_config(data_chan);
+	channel_config_set_transfer_data_size(&data_config, DMA_SIZE_32);
+	channel_config_set_read_increment(&data_config, true);
+	channel_config_set_write_increment(&data_config, false);
+	channel_config_set_dreq(&data_config, pio_get_dreq(pio, sm, true));
+	channel_config_set_bswap(&data_config, true);
+	channel_config_set_chain_to(&data_config, restart_chan);
+	dma_channel_configure(
+		data_chan,
+		&data_config,
+		/* write_addr= */ &pio->txf[sm],
+		/* read_addr= */ NULL,
+		/* transfer_count= */ 0,
+		/* trigger= */ false
+	);
+
+	// Restart Channel
+	// - reset Control Channel's write address and trigger it
+	dma_channel_config restart_config = dma_channel_get_default_config(restart_chan);
+	channel_config_set_transfer_data_size(&restart_config, DMA_SIZE_32);
+	channel_config_set_read_increment(&restart_config, false);
+	channel_config_set_write_increment(&restart_config, false);
+	dma_channel_configure(
+		restart_chan,
+		&restart_config,
+		/* write_addr= */ &dma_hw->ch[ctrl_chan].al2_write_addr_trig,
+		/* read_addr= */ &st506_data_ctrl_write_addr,
+		/* transfer_count= */ 1,
+		/* trigger= */ false
+	);
+
+	// start the program by triggering the Control Channel
+	dma_channel_start(ctrl_chan);
+}
+
+static inline void st506_data_program_retarget(const void *data_addr) {
+	// first disable chaining from Data Channel
+	// otherwise aborting would trigger the Restart Channel
+	uint32_t ctrl = dma_hw->ch[st506_data_data_chan].al1_ctrl;
+	ctrl &= ~DMA_CH0_CTRL_TRIG_CHAIN_TO_BITS;
+	ctrl |= st506_data_data_chan << DMA_CH0_CTRL_TRIG_CHAIN_TO_LSB;
+	dma_hw->ch[st506_data_data_chan].al1_ctrl = ctrl;
+
+	// if the control channels are busy by any chance, wait for them to finish
+	while (dma_channel_is_busy(st506_data_ctrl_chan) || dma_channel_is_busy(st506_data_restart_chan)) {}
+	// then stop the Data Channel
+	dma_channel_abort(st506_data_data_chan);
+
+	// fetch previous data length and start address
+	uint32_t old_data_cnt  = st506_data_ctrl_block[0];
+	uint32_t old_data_addr = st506_data_ctrl_block[1];
+
+	// calculate progress of the previously running DMA transfer
+	uint32_t cur_read_addr = dma_hw->ch[st506_data_data_chan].read_addr;
+	uint32_t cur_read_pos  = cur_read_addr - old_data_addr;
+	uint32_t cur_read_cnt  = old_data_cnt - cur_read_pos / sizeof(uint32_t);
+
+	// update the data address for the Control Channel
+	st506_data_ctrl_block[1] = (uint32_t)data_addr;
+
+	// re-enable chaining from Data Channel to Restart Channel
+	ctrl = dma_hw->ch[st506_data_data_chan].al1_ctrl;
+	ctrl &= ~DMA_CH0_CTRL_TRIG_CHAIN_TO_BITS;
+	ctrl |= st506_data_restart_chan << DMA_CH0_CTRL_TRIG_CHAIN_TO_LSB;
+	dma_hw->ch[st506_data_data_chan].al1_ctrl = ctrl;
+
+	// trigger the Data Channel with a partial transfer count
+	// (this will be reprogrammed by the Control Channel)
+	dma_hw->ch[st506_data_data_chan].al3_transfer_count = cur_read_cnt;
+	dma_hw->ch[st506_data_data_chan].al3_read_addr_trig = (uint32_t)data_addr + cur_read_pos;
+
+	// LT_I("old_data_cnt=%u, old_data_addr=0x%08lx", old_data_cnt, old_data_addr);
+	// LT_I("cur_read_addr=0x%08lx, cur_read_pos=%u, cur_read_cnt=%u", cur_read_addr, cur_read_pos, cur_read_cnt);
+}
+%}

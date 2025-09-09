@@ -1,0 +1,60 @@
+.program st506_wrdt
+.fifo txrx // keep FIFO unjoined to make it smaller
+.in 32 left auto 32
+
+got_one:
+	// if WRITE=1 is found, push the pin value
+	// make it last 12 cycles in total: jmp + in + 9 + in
+	in pins, 1 [9]
+
+.wrap_target
+	// push the pin value (it should be WRITE=0 at this point)
+	in pins, 1
+	// wait at most 7 cycles for a WRITE=1
+	// this makes the entire .wrap last 8 cycles
+	jmp pin got_one
+	jmp pin got_one
+	jmp pin got_one
+	jmp pin got_one
+	jmp pin got_one
+	jmp pin got_one
+	jmp pin got_one
+.wrap
+
+% c-sdk {
+static inline void st506_wrdt_program_init(PIO pio, uint sm, uint offset, uint pin_write, uint freq) {
+	float clkdiv	= (float)clock_get_hz(clk_sys) / (float)(freq * 8);
+	pio_sm_config c = st506_wrdt_program_get_default_config(offset);
+	sm_config_set_clkdiv(&c, clkdiv);
+	sm_config_set_in_pin_base(&c, pin_write);
+	sm_config_set_jmp_pin(&c, pin_write);
+	pio_sm_init(pio, sm, offset, &c);
+}
+
+static uint st506_wrdt_chan;
+
+static inline void st506_wrdt_program_start(PIO pio, uint sm) {
+	st506_wrdt_chan = dma_claim_unused_channel(true);
+
+	// WRDT Channel
+	// - copy data from PIO's RX FIFO
+	// - swap endianness of transferred data
+	// - don't start the transfer and don't initialize the write address
+	dma_channel_config wrdt_config = dma_channel_get_default_config(st506_wrdt_chan);
+	channel_config_set_transfer_data_size(&wrdt_config, DMA_SIZE_32);
+	channel_config_set_read_increment(&wrdt_config, false);
+	channel_config_set_write_increment(&wrdt_config, true);
+	channel_config_set_dreq(&wrdt_config, pio_get_dreq(pio, sm, false));
+	channel_config_set_bswap(&wrdt_config, true);
+	dma_channel_configure(
+		st506_wrdt_chan,
+		&wrdt_config,
+		/* write_addr= */ NULL,
+		/* read_addr= */ &pio->rxf[sm],
+		/* transfer_count= */ 0,
+		/* trigger= */ false
+	);
+
+	pio_sm_set_enabled(pio, sm, true);
+}
+%}

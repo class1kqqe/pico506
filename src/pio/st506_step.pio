@@ -1,0 +1,78 @@
+.program st506_step
+.fifo txrx
+.in 32 left auto 32
+.out 32 left auto 32
+
+// X: Current track number
+// Y: Last track number
+
+.wrap_target
+	// wait for STEP=1
+	wait 1 pin 0
+	// check DIR_IN
+	jmp pin dir_in
+
+dir_out:
+	// if on track 0, don't step
+	jmp !x push_track
+	// if not on track 0, step out
+	jmp x-- push_track
+
+dir_in:
+	// if not on last track, step in
+	jmp x!=y dir_in_step
+	// if on last track, don't step
+	jmp push_track
+dir_in_step:
+	// increment the track number
+	mov x, ~x
+	jmp x-- dir_in_step_done
+dir_in_step_done:
+	mov x, ~x
+
+push_track:
+	// send the new track number
+	in x, 32
+	// wait for STEP=0
+	wait 0 pin 0
+.wrap
+
+% c-sdk {
+static inline void st506_step_program_init(PIO pio, uint sm, uint offset, uint pin_step, uint pin_dir_in) {
+	pio_sm_config c = st506_step_program_get_default_config(offset);
+	sm_config_set_in_pin_base(&c, pin_step);
+	sm_config_set_jmp_pin(&c, pin_dir_in);
+	pio_sm_init(pio, sm, offset, &c);
+}
+
+static uint st506_step_chan;
+
+static inline void st506_step_program_start(PIO pio, uint sm, uint track_cur, uint *track_next, uint track_last) {
+	// initialize X and Y as current/last track numbers
+	pio_sm_put_blocking(pio, sm, track_cur);
+	pio_sm_exec_wait_blocking(pio, sm, pio_encode_out(pio_x, 32));
+	pio_sm_put_blocking(pio, sm, track_last);
+	pio_sm_exec_wait_blocking(pio, sm, pio_encode_out(pio_y, 32));
+
+	uint step_chan = st506_step_chan = dma_claim_unused_channel(true);
+
+	dma_channel_config step_config = dma_channel_get_default_config(step_chan);
+	channel_config_set_transfer_data_size(&step_config, DMA_SIZE_32);
+	channel_config_set_read_increment(&step_config, false);
+	channel_config_set_write_increment(&step_config, false);
+	channel_config_set_dreq(&step_config, pio_get_dreq(pio, sm, false));
+	dma_channel_configure(
+		step_chan,
+		&step_config,
+		// write to 'track_cur' pointer
+		track_next,
+		// read from PIO's RX FIFO
+		&pio->rxf[sm],
+		// transfer "forever"
+		0xFFFFFFFF,
+		true
+	);
+
+	pio_sm_set_enabled(pio, sm, true);
+}
+%}

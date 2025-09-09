@@ -1,0 +1,85 @@
+.program st506_rddt
+.fifo txrx // keep FIFO unjoined to make it smaller
+.out 1 left auto 32
+
+.wrap_target
+	// loop while outputting data
+	out pins, 1
+.wrap
+
+% c-sdk {
+static inline void st506_rddt_program_init(PIO pio, uint sm, uint offset, uint pin_read, uint freq) {
+	float clkdiv	= (float)clock_get_hz(clk_sys) / (float)(freq * 1);
+	pio_sm_config c = st506_rddt_program_get_default_config(offset);
+	sm_config_set_clkdiv(&c, clkdiv);
+	sm_config_set_out_pin_base(&c, pin_read);
+	pio_sm_init(pio, sm, offset, &c);
+	pio_sm_set_consecutive_pindirs(pio, sm, pin_read, 1, true);
+}
+
+static uint st506_rddt_chan;
+
+static inline void st506_rddt_program_start(PIO pio, uint sm) {
+	st506_rddt_chan = dma_claim_unused_channel(true);
+
+	// RDDT Channel
+	// - copy data to PIO's TX FIFO
+	// - swap endianness of transferred data
+	// - don't start the transfer and don't initialize the read address
+	dma_channel_config rddt_config = dma_channel_get_default_config(st506_rddt_chan);
+	channel_config_set_transfer_data_size(&rddt_config, DMA_SIZE_32);
+	channel_config_set_read_increment(&rddt_config, true);
+	channel_config_set_write_increment(&rddt_config, false);
+	channel_config_set_dreq(&rddt_config, pio_get_dreq(pio, sm, true));
+	channel_config_set_bswap(&rddt_config, true);
+	dma_channel_configure(
+		st506_rddt_chan,
+		&rddt_config,
+		/* write_addr= */ &pio->txf[sm],
+		/* read_addr= */ NULL,
+		/* transfer_count= */ 0,
+		/* trigger= */ false
+	);
+
+	pio_sm_set_enabled(pio, sm, true);
+}
+
+static inline void st506_rddt_program_retarget(
+	uint rdgt_ctrl_chan,
+	uint rdgt_work_chan,
+	uint rdgt_trig_chan,
+	uint rddt_data_old,
+	uint rddt_data_new,
+	uint rddt_cnt
+) {
+	// first disable chaining from RDDT Channel
+	// otherwise aborting would trigger the Control Channel and start everything again
+	uint32_t old_ctrl = dma_hw->ch[st506_rddt_chan].al1_ctrl;
+	uint32_t new_ctrl = old_ctrl;
+	new_ctrl &= ~DMA_CH0_CTRL_TRIG_CHAIN_TO_BITS;
+	new_ctrl |= st506_rddt_chan << DMA_CH0_CTRL_TRIG_CHAIN_TO_LSB;
+	dma_hw->ch[st506_rddt_chan].al1_ctrl = new_ctrl;
+
+	// if the control channels are busy by any chance, wait for them to finish
+	while (dma_channel_is_busy(rdgt_ctrl_chan) || dma_channel_is_busy(rdgt_work_chan) ||
+		   dma_channel_is_busy(rdgt_trig_chan)) {}
+	// then stop the RDDT Channel
+	dma_channel_abort(st506_rddt_chan);
+
+	// calculate progress of the previously running DMA transfer
+	uint cur_read_addr = dma_hw->ch[st506_rddt_chan].read_addr;
+	uint cur_read_pos  = cur_read_addr - rddt_data_old;
+	uint cur_read_cnt  = rddt_cnt - cur_read_pos / sizeof(uint);
+
+	// re-enable chaining from Data Channel to Restart Channel
+	dma_hw->ch[st506_rddt_chan].al1_ctrl = old_ctrl;
+
+	// trigger the Data Channel with a partial transfer count
+	// (this will be reprogrammed by the Control Channel)
+	dma_hw->ch[st506_rddt_chan].al3_transfer_count = cur_read_cnt;
+	dma_hw->ch[st506_rddt_chan].al3_read_addr_trig = rddt_data_new + cur_read_pos;
+
+	// LT_I("rddt_cnt=%u, rddt_data_old=0x%08lx, rddt_data_new=0x%08lx", rddt_cnt, rddt_data_old, rddt_data_new);
+	// LT_I("cur_read_addr=0x%08lx, cur_read_pos=%u, cur_read_cnt=%u", cur_read_addr, cur_read_pos, cur_read_cnt);
+}
+%}
