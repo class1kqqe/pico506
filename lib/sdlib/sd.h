@@ -56,6 +56,11 @@ typedef struct sd_t {
 
 	void *priv;
 	uint cs_pin;
+	bool use_dma;
+	uint tx_dma;
+	uint rx_dma;
+	dma_channel_config tx_config;
+	dma_channel_config rx_config;
 } sd_t;
 
 // sd.c
