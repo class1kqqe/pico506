@@ -38,6 +38,8 @@ void sd_spi_init(sd_t *sd, uint32_t freq, uint sck, uint tx, uint rx, uint cs) {
 	channel_config_set_transfer_data_size(&sd->rx_config, DMA_SIZE_8);
 	channel_config_set_dreq(&sd->tx_config, spi_get_dreq(sd->priv, true));
 	channel_config_set_dreq(&sd->rx_config, spi_get_dreq(sd->priv, false));
+	channel_config_set_sniff_enable(&sd->tx_config, true);
+	channel_config_set_sniff_enable(&sd->rx_config, true);
 	channel_config_set_write_increment(&sd->tx_config, false);
 	channel_config_set_read_increment(&sd->rx_config, false);
 }
@@ -105,17 +107,23 @@ static sd_err_t sd_spi_read_data(sd_t *sd, uint8_t *data, uint32_t len) {
 				return SD_ERR_BAD_TOKEN;
 			if (!sd->use_dma) {
 				spi_read_blocking(sd->priv, 0xFF, data, len);
+				spi_read_blocking(sd->priv, 0xFF, crc, 2);
 			} else {
 				channel_config_set_read_increment(&sd->tx_config, false);
 				channel_config_set_write_increment(&sd->rx_config, true);
 				static uint8_t fill = 0xFF;
 				dma_channel_configure(sd->tx_dma, &sd->tx_config, &spi0_hw->dr, &fill, len, false);
 				dma_channel_configure(sd->rx_dma, &sd->rx_config, data, &spi0_hw->dr, len, false);
+				dma_sniffer_enable(sd->rx_dma, DMA_SNIFF_CTRL_CALC_VALUE_CRC16, false);
+				dma_sniffer_set_data_accumulator(0);
 				dma_start_channel_mask((1 << sd->tx_dma) | (1 << sd->rx_dma));
 				dma_channel_wait_for_finish_blocking(sd->tx_dma);
 				dma_channel_wait_for_finish_blocking(sd->rx_dma);
+				spi_read_blocking(sd->priv, 0xFF, crc, 2);
+				uint32_t crc_value = (crc[0] << 8) | (crc[1] << 0);
+				if (crc_value != dma_sniffer_get_data_accumulator())
+					return SD_ERR_BAD_CRC;
 			}
-			spi_read_blocking(sd->priv, 0xFF, crc, 2);
 			return SD_ERR_OK;
 		}
 	}
