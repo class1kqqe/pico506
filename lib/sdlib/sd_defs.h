@@ -50,3 +50,5 @@
 
 #define R3_POWER_UP 0x80
 #define R3_CCS		0x40
+
+#define SD_BLOCK_LEN 512

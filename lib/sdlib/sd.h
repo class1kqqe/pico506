@@ -27,6 +27,8 @@ typedef enum {
 	SD_ERR_INIT_READY_FAILED,
 	SD_ERR_INIT_BAD_ECHO,
 	SD_ERR_INIT_POWER_UP_BUSY,
+	SD_ERR_NOT_INITIALIZED,
+	SD_ERR_READ_OUT_OF_RANGE,
 } sd_err_t;
 
 typedef void (*sd_power_on_t)(sd_t *sd);
@@ -58,6 +60,7 @@ typedef struct sd_t {
 
 // sd.c
 sd_err_t sd_init(sd_t *sd);
+sd_err_t sd_read(sd_t *sd, uint8_t *data, uint32_t start, uint32_t count);
 
 // sd_spi.c
 void sd_spi_init(sd_t *sd, uint32_t freq, uint sck, uint tx, uint rx, uint cs);

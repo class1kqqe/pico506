@@ -117,3 +117,40 @@ sd_err_t sd_init(sd_t *sd) {
 	sd->init_ok = true;
 	return SD_ERR_OK;
 }
+
+sd_err_t sd_read(sd_t *sd, uint8_t *data, uint32_t start, uint32_t count) {
+	// precondition checks
+	if (!sd->init_ok)
+		return SD_ERR_NOT_INITIALIZED;
+	if (start + count > sd->sectors)
+		return SD_ERR_READ_OUT_OF_RANGE;
+	if (count == 0)
+		return SD_ERR_OK;
+
+	sd_err_t err;
+	uint8_t resp[1];
+	// calculate address based on CCS bit
+	uint32_t addr = sd->ccs ? (start) : (start * SD_BLOCK_LEN);
+
+	// request to read single or multiple blocks
+	if (count == 1)
+		sd->command(sd, CMD17_READ_SINGLE_BLOCK, addr, 0);
+	else
+		sd->command(sd, CMD18_READ_MULTIPLE_BLOCK, addr, 0);
+	if ((err = sd->read_r1(sd, resp)))
+		return err;
+
+	// transfer blocks one by one
+	for (uint32_t i = 0; i < count; i++) {
+		if ((err = sd->read_data(sd, data, SD_BLOCK_LEN)))
+			break;
+		data += SD_BLOCK_LEN;
+	}
+
+	// if multiple blocks, stop transmission after finished/errored out
+	if (count > 1) {
+		sd->command(sd, CMD12_STOP_TRANSMISSION, 0, 0);
+		sd->read_r1(sd, resp);
+	}
+	return err;
+}
