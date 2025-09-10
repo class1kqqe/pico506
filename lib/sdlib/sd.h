@@ -34,7 +34,7 @@ typedef void (*sd_command_t)(sd_t *sd, uint8_t cmd, uint32_t arg, uint8_t crc);
 typedef sd_err_t (*sd_wait_busy_t)(sd_t *sd, uint8_t *resp, uint32_t timeout);
 typedef sd_err_t (*sd_read_r1_t)(sd_t *sd, uint8_t *resp);
 typedef sd_err_t (*sd_read_rx_t)(sd_t *sd, uint8_t *resp, uint32_t len);
-typedef sd_err_t (*sd_read_data_t)(sd_t *sd, uint8_t *resp, uint32_t len);
+typedef sd_err_t (*sd_read_data_t)(sd_t *sd, uint8_t *data, uint32_t len);
 
 typedef struct sd_t {
 	bool init_ok;
@@ -43,7 +43,7 @@ typedef struct sd_t {
 	uint8_t cid[16];
 
 	char name[6];
-	uint32_t capacity_kb;
+	uint32_t sectors;
 
 	sd_power_on_t power_on;
 	sd_command_t command;

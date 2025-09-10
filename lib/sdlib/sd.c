@@ -5,7 +5,7 @@
 
 sd_err_t sd_init(sd_t *sd) {
 	sd_err_t err;
-	uint8_t resp[20];
+	uint8_t resp[16];
 
 	// send power up sequence
 	sd->init_ok = false;
@@ -80,15 +80,19 @@ sd_err_t sd_init(sd_t *sd) {
 
 	// read CSD register
 	sd->command(sd, CMD9_SEND_CSD, 0, 0);
-	if ((err = sd->read_data(sd, resp, 2 + 16 + 2)))
+	if ((err = sd->read_r1(sd, resp)))
 		return err;
-	memcpy(sd->csd, &resp[2], sizeof(sd->csd));
+	if ((err = sd->read_data(sd, resp, 16)))
+		return err;
+	memcpy(sd->csd, resp, sizeof(sd->csd));
 
 	// read CID register
 	sd->command(sd, CMD10_SEND_CID, 0, 0);
-	if ((err = sd->read_data(sd, resp, 2 + 16 + 2)))
+	if ((err = sd->read_r1(sd, resp)))
 		return err;
-	memcpy(sd->cid, &resp[2], sizeof(sd->cid));
+	if ((err = sd->read_data(sd, resp, 16)))
+		return err;
+	memcpy(sd->cid, resp, sizeof(sd->cid));
 
 	// get product name from CID
 	memcpy(sd->name, &sd->cid[3], 5);
@@ -101,13 +105,13 @@ sd_err_t sd_init(sd_t *sd) {
 		uint32_t c_size_mult = ((sd->csd[9] & 0b11) << 1) | (sd->csd[10] >> 7);
 		uint32_t read_bl_len = sd->csd[5] & 0b1111;
 		uint32_t mult		 = 1 << (c_size_mult + 2);
-		uint32_t blocknr	 = (c_size + 1) * mult;
+		uint32_t block_nr	 = (c_size + 1) * mult;
 		uint32_t block_len	 = 1 << (read_bl_len);
-		sd->capacity_kb		 = blocknr * block_len / 1024;
+		sd->sectors			 = block_nr * block_len / 512;
 	} else if ((sd->csd[0] & 0xC0) == 0x40) {
 		// CSD Version 2.0
 		uint32_t c_size = ((sd->csd[7] & 0b111111) << 16) | (sd->csd[8] << 8) | (sd->csd[9] << 0);
-		sd->capacity_kb = (c_size + 1) * 512;
+		sd->sectors		= (c_size + 1) * 1024;
 	}
 
 	sd->init_ok = true;

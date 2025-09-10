@@ -8,7 +8,7 @@ static void sd_spi_command(sd_t *sd, uint8_t cmd, uint32_t arg, uint8_t crc);
 static sd_err_t sd_spi_wait_busy(sd_t *sd, uint8_t *resp, uint32_t timeout);
 static sd_err_t sd_spi_read_r1(sd_t *sd, uint8_t *resp);
 static sd_err_t sd_spi_read_rx(sd_t *sd, uint8_t *resp, uint32_t len);
-static sd_err_t sd_spi_read_data(sd_t *sd, uint8_t *resp, uint32_t len);
+static sd_err_t sd_spi_read_data(sd_t *sd, uint8_t *data, uint32_t len);
 
 void sd_spi_init(sd_t *sd, uint32_t freq, uint sck, uint tx, uint rx, uint cs) {
 	sd->power_on  = sd_spi_power_on;
@@ -81,17 +81,17 @@ static sd_err_t sd_spi_read_rx(sd_t *sd, uint8_t *resp, uint32_t len) {
 	return SD_ERR_OK;
 }
 
-static sd_err_t sd_spi_read_data(sd_t *sd, uint8_t *resp, uint32_t len) {
-	sd_err_t err;
-	if ((err = sd_spi_read_r1(sd, resp)))
-		return err;
+static sd_err_t sd_spi_read_data(sd_t *sd, uint8_t *data, uint32_t len) {
+	uint8_t resp[1];
+	uint8_t crc[2];
 
 	for (uint32_t i = 0; i < 2000; i++) {
-		spi_read_blocking(sd->priv, 0xFF, &resp[1], 1);
-		if (resp[1] != 0xFF) {
-			if (resp[1] != CTRL_TOKEN_START)
+		spi_read_blocking(sd->priv, 0xFF, resp, 1);
+		if (resp[0] != 0xFF) {
+			if (resp[0] != CTRL_TOKEN_START)
 				return SD_ERR_BAD_TOKEN;
-			spi_read_blocking(sd->priv, 0xFF, &resp[2], len - 2);
+			spi_read_blocking(sd->priv, 0xFF, data, len);
+			spi_read_blocking(sd->priv, 0xFF, crc, 2);
 			return SD_ERR_OK;
 		}
 	}
