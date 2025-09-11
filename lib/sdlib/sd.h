@@ -38,6 +38,7 @@ typedef sd_err_t (*sd_wait_busy_t)(sd_t *sd, uint8_t *resp, uint32_t timeout);
 typedef sd_err_t (*sd_read_r1_t)(sd_t *sd, uint8_t *resp);
 typedef sd_err_t (*sd_read_rx_t)(sd_t *sd, uint8_t *resp, uint32_t len);
 typedef sd_err_t (*sd_read_data_t)(sd_t *sd, uint8_t *data, uint32_t len);
+typedef bool (*sd_interrupt_t)(void *param);
 
 typedef struct sd_t {
 	bool init_ok;
@@ -55,6 +56,11 @@ typedef struct sd_t {
 	sd_read_rx_t read_rx;
 	sd_read_data_t read_data;
 
+	sd_interrupt_t interrupt_check;
+	void *interrupt_param;
+	volatile bool interrupted;
+
+	// sd_spi.c
 	void *priv;
 	uint cs_pin;
 	bool use_dma;

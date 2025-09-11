@@ -151,6 +151,10 @@ sd_err_t sd_read(sd_t *sd, uint8_t *data, uint32_t start, uint32_t count) {
 		if ((err = sd->read_data(sd, data, SD_BLOCK_LEN)))
 			break;
 		data += SD_BLOCK_LEN;
+		if (sd->interrupt_check && sd->interrupt_check(sd->interrupt_param)) {
+			sd->interrupted = true;
+			break;
+		}
 	}
 
 	// if multiple blocks, stop transmission after finished/errored out
