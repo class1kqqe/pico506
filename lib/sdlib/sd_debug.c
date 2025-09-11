@@ -1,9 +1,6 @@
 // Copyright (c) Kuba Szczodrzyński 2025-9-9.
 
-#include "sd.h"
-#include "sd_defs.h"
-
-#include <lt_logger.h>
+#include "sd_priv.h"
 
 void sd_print_r1(const uint8_t *resp, bool no_bytes) {
 	if (!no_bytes)

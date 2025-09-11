@@ -1,7 +1,6 @@
 // Copyright (c) Kuba Szczodrzyński 2025-9-9.
 
-#include "sd.h"
-#include "sd_defs.h"
+#include "sd_priv.h"
 
 static void sd_spi_power_on(sd_t *sd);
 static void sd_spi_command(sd_t *sd, uint8_t cmd, uint32_t arg, uint8_t crc);
@@ -97,13 +96,12 @@ static sd_err_t sd_spi_read_rx(sd_t *sd, uint8_t *resp, uint32_t len) {
 }
 
 static sd_err_t sd_spi_read_data(sd_t *sd, uint8_t *data, uint32_t len) {
-	uint8_t resp[1];
 	uint8_t crc[2];
 
 	for (uint32_t i = 0; i < 2000; i++) {
-		spi_read_blocking(sd->priv, 0xFF, resp, 1);
-		if (resp[0] != 0xFF) {
-			if (resp[0] != CTRL_TOKEN_START)
+		spi_read_blocking(sd->priv, 0xFF, data, 1);
+		if (data[0] != 0xFF) {
+			if (data[0] != CTRL_TOKEN_START)
 				return SD_ERR_BAD_TOKEN;
 			if (!sd->use_dma) {
 				spi_read_blocking(sd->priv, 0xFF, data, len);

@@ -1,7 +1,6 @@
 // Copyright (c) Kuba Szczodrzyński 2025-9-9.
 
-#include "sd.h"
-#include "sd_defs.h"
+#include "sd_priv.h"
 
 sd_err_t sd_init(sd_t *sd) {
 	sd_err_t err;
@@ -17,7 +16,7 @@ sd_err_t sd_init(sd_t *sd) {
 		sd->command(sd, CMD0_GO_IDLE_STATE, 0, 0x94);
 		if ((err = sd->read_r1(sd, resp)))
 			continue;
-		sd_print_r1(resp, false);
+		DEBUG_INIT(sd_print_r1(resp, false));
 		// break if already IDLE
 		if (resp[0] == R1_IN_IDLE)
 			break;
@@ -32,7 +31,7 @@ sd_err_t sd_init(sd_t *sd) {
 	sd->command(sd, CMD8_SEND_IF_COND, (0x1 << 8) | (0xAA << 0), 0x86);
 	if ((err = sd->read_rx(sd, resp, 5)))
 		return err;
-	sd_print_r7(resp);
+	DEBUG_INIT(sd_print_r7(resp));
 	// return if not IDLE
 	if (resp[0] != R1_IN_IDLE)
 		return SD_ERR_INIT_IDLE_FAILED;
@@ -46,12 +45,12 @@ sd_err_t sd_init(sd_t *sd) {
 		sd->command(sd, CMD55_APP_CMD, 0, 0);
 		if ((err = sd->read_r1(sd, resp)))
 			continue;
-		sd_print_r1(resp, false);
+		DEBUG_INIT(sd_print_r1(resp, false));
 		// send ACMD41_SD_SEND_OP_COND and read R1
 		sd->command(sd, ACMD41_SD_SEND_OP_COND, (1 << 30), 0);
 		if ((err = sd->read_r1(sd, resp)))
 			continue;
-		sd_print_r1(resp, false);
+		DEBUG_INIT(sd_print_r1(resp, false));
 		// break if already READY
 		if (resp[0] == R1_READY)
 			break;
@@ -70,7 +69,7 @@ sd_err_t sd_init(sd_t *sd) {
 	sd->command(sd, CMD58_READ_OCR, 0, 0);
 	if ((err = sd->read_rx(sd, resp, 5)))
 		return err;
-	sd_print_r3(resp);
+	DEBUG_INIT(sd_print_r3(resp));
 	// return if power up status is BUSY
 	if ((resp[1] & R3_POWER_UP) != R3_POWER_UP)
 		return SD_ERR_INIT_POWER_UP_BUSY;
