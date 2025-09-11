@@ -67,7 +67,7 @@ static void sd_spi_command(sd_t *sd, uint8_t cmd, uint32_t arg, uint8_t crc) {
 }
 
 static sd_err_t sd_spi_wait_busy(sd_t *sd, uint8_t *resp, uint32_t timeout) {
-	for (uint32_t i = 0; i < timeout; i++) {
+	FOR_TIMEOUT(timeout) {
 		spi_read_blocking(sd->priv, 0xFF, resp, 1);
 		if (resp[0] == 0xFF)
 			return SD_ERR_OK;
@@ -98,7 +98,7 @@ static sd_err_t sd_spi_read_rx(sd_t *sd, uint8_t *resp, uint32_t len) {
 static sd_err_t sd_spi_read_data(sd_t *sd, uint8_t *data, uint32_t len) {
 	uint8_t crc[2];
 
-	for (uint32_t i = 0; i < 2000; i++) {
+	FOR_TIMEOUT(100) {
 		spi_read_blocking(sd->priv, 0xFF, data, 1);
 		if (data[0] != 0xFF) {
 			if (data[0] != CTRL_TOKEN_START)

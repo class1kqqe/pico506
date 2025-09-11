@@ -3,14 +3,14 @@
 #include "sd_priv.h"
 
 sd_err_t sd_init(sd_t *sd) {
-	sd_err_t err;
+	sd_err_t err = SD_ERR_OK;
 	uint8_t resp[16];
 
 	// send power up sequence
 	sd->init_ok = false;
 	sd->power_on(sd);
 
-	for (uint32_t i = 0; i < 255; i++) {
+	FOR_TIMEOUT(100) {
 		sleep_ms(1);
 		// send CMD0_GO_IDLE_STATE and read R1
 		sd->command(sd, CMD0_GO_IDLE_STATE, 0, 0x94);
@@ -39,7 +39,7 @@ sd_err_t sd_init(sd_t *sd) {
 	if (resp[4] != 0xAA)
 		return SD_ERR_INIT_BAD_ECHO;
 
-	for (uint32_t i = 0; i < 255; i++) {
+	FOR_TIMEOUT(1000) {
 		sleep_ms(1);
 		// send CMD55_APP_CMD and read R1
 		sd->command(sd, CMD55_APP_CMD, 0, 0);
@@ -113,6 +113,13 @@ sd_err_t sd_init(sd_t *sd) {
 		sd->sectors		= (c_size + 1) * 1024;
 	}
 
+	// set block length on non-SDHC cards
+	if (!sd->ccs) {
+		sd->command(sd, CMD16_SET_BLOCKLEN, 512, 0);
+		if ((err = sd->read_r1(sd, resp)))
+			return err;
+	}
+
 	sd->init_ok = true;
 	return SD_ERR_OK;
 }
@@ -150,6 +157,9 @@ sd_err_t sd_read(sd_t *sd, uint8_t *data, uint32_t start, uint32_t count) {
 	if (count > 1) {
 		sd->command(sd, CMD12_STOP_TRANSMISSION, 0, 0);
 		sd->read_r1(sd, resp);
+		// CMD12 responds with R1b
+		if ((err = sd->wait_busy(sd, resp, 100)))
+			return err;
 	}
 	return err;
 }

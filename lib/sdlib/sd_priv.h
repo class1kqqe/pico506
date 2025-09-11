@@ -17,3 +17,6 @@
 #else
 #define DEBUG_INIT(...)
 #endif
+
+#define FOR_TIMEOUT(ms) \
+	for (absolute_time_t start = get_absolute_time(); absolute_time_diff_us(start, get_absolute_time()) < (ms) * 1000;)
