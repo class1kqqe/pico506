@@ -36,7 +36,7 @@ static uint st506_wrgt_trig_chan;
 static uint st506_wrgt_wrdt_mask;
 
 static uint st506_wrgt_trigger_ctrl_block[8][2];
-static uint st506_wrgt_abort_ctrl_block[2][2];
+static uint st506_wrgt_abort_ctrl_block[4][2];
 static uint st506_wrgt_discard;
 
 static inline void st506_wrgt_program_start(
@@ -44,7 +44,9 @@ static inline void st506_wrgt_program_start(
 	uint sm,
 	uint rddt_chan,
 	uint wrdt_chan,
-	const void *wrdt_pio_rxf
+	const volatile void *wrdt_pio_rxf,
+	volatile void *wrrmc_pio_txf,
+	volatile void *wrrma_pio_txf
 ) {
 	st506_wrgt_ctrl_chan = dma_claim_unused_channel(true);
 	st506_wrgt_work_chan = dma_claim_unused_channel(true);
@@ -81,9 +83,15 @@ static inline void st506_wrgt_program_start(
 	// 1. Write Channel's number -> DMA's CHAN_ABORT register
 	st506_wrgt_abort_ctrl_block[0][0] = (uint)&st506_wrgt_wrdt_mask;
 	st506_wrgt_abort_ctrl_block[0][1] = DMA_BASE + DMA_CHAN_ABORT_OFFSET;
-	// 2. Finish by writing zero to the trigger register
-	st506_wrgt_abort_ctrl_block[1][0] = 0;
-	st506_wrgt_abort_ctrl_block[1][1] = 0;
+	// 2. Write Channel's reload transfer count -> WRRMC PIO TX FIFO
+	st506_wrgt_abort_ctrl_block[1][0] = (uint)&dma_debug_hw->ch[wrdt_chan].dbg_tcr;
+	st506_wrgt_abort_ctrl_block[1][1] = (uint)wrrmc_pio_txf;
+	// 3. Write Channel's write address -> WRRMA PIO TX FIFO
+	st506_wrgt_abort_ctrl_block[2][0] = (uint)&dma_hw->ch[wrdt_chan].write_addr;
+	st506_wrgt_abort_ctrl_block[2][1] = (uint)wrrma_pio_txf;
+	// 4. Finish by writing zero to the trigger register
+	st506_wrgt_abort_ctrl_block[3][0] = 0;
+	st506_wrgt_abort_ctrl_block[3][1] = 0;
 
 	// Trigger Channel
 	// - receive Control Block addresses from the PIO and trigger/abort the Control Channel

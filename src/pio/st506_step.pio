@@ -47,7 +47,13 @@ static inline void st506_step_program_init(PIO pio, uint sm, uint offset, uint p
 
 static uint st506_step_chan;
 
-static inline void st506_step_program_start(PIO pio, uint sm, uint track_cur, uint *track_next, uint track_last) {
+static inline void st506_step_program_start(
+	PIO pio,
+	uint sm,
+	uint track_cur,
+	volatile uint *track_next,
+	uint track_last
+) {
 	// initialize X and Y as current/last track numbers
 	pio_sm_put_blocking(pio, sm, track_cur);
 	pio_sm_exec_wait_blocking(pio, sm, pio_encode_out(pio_x, 32));

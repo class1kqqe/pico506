@@ -1,0 +1,17 @@
+.program st506_wrrm
+.fifo txrx
+.in 32 left auto 32
+.out 32 left auto 32
+
+.wrap_target
+	out x, 32
+	in x, 32
+.wrap
+
+% c-sdk {
+static inline void st506_wrrm_program_init(PIO pio, uint sm, uint offset) {
+	pio_sm_config c = st506_wrrm_program_get_default_config(offset);
+	pio_sm_init(pio, sm, offset, &c);
+	pio_sm_set_enabled(pio, sm, true);
+}
+%}
