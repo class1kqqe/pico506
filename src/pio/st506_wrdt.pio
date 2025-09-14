@@ -31,7 +31,7 @@ static inline void st506_wrdt_program_init(PIO pio, uint sm, uint offset, uint p
 	pio_sm_init(pio, sm, offset, &c);
 }
 
-static uint st506_wrdt_chan;
+static int st506_wrdt_chan = -1;
 
 static inline void st506_wrdt_program_start(PIO pio, uint sm) {
 	st506_wrdt_chan = dma_claim_unused_channel(true);
@@ -56,5 +56,14 @@ static inline void st506_wrdt_program_start(PIO pio, uint sm) {
 	);
 
 	pio_sm_set_enabled(pio, sm, true);
+}
+
+static inline void st506_wrdt_program_stop(PIO pio, uint sm) {
+	pio_sm_set_enabled(pio, sm, false);
+	if (st506_wrdt_chan >= 0) {
+		dma_channel_cleanup(st506_wrdt_chan);
+		dma_channel_unclaim(st506_wrdt_chan);
+		st506_wrdt_chan = -1;
+	}
 }
 %}

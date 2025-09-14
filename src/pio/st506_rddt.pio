@@ -17,7 +17,7 @@ static inline void st506_rddt_program_init(PIO pio, uint sm, uint offset, uint p
 	pio_sm_set_consecutive_pindirs(pio, sm, pin_read, 1, true);
 }
 
-static uint st506_rddt_chan;
+static int st506_rddt_chan = -1;
 
 static inline void st506_rddt_program_start(PIO pio, uint sm) {
 	st506_rddt_chan = dma_claim_unused_channel(true);
@@ -81,5 +81,14 @@ static inline void st506_rddt_program_retarget(
 
 	// LT_I("rddt_cnt=%u, rddt_data_old=0x%08lx, rddt_data_new=0x%08lx", rddt_cnt, rddt_data_old, rddt_data_new);
 	// LT_I("cur_read_addr=0x%08lx, cur_read_pos=%u, cur_read_cnt=%u", cur_read_addr, cur_read_pos, cur_read_cnt);
+}
+
+static inline void st506_rddt_program_stop(PIO pio, uint sm) {
+	pio_sm_set_enabled(pio, sm, false);
+	if (st506_rddt_chan >= 0) {
+		dma_channel_cleanup(st506_rddt_chan);
+		dma_channel_unclaim(st506_rddt_chan);
+		st506_rddt_chan = -1;
+	}
 }
 %}

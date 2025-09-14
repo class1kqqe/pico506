@@ -14,4 +14,8 @@ static inline void st506_wrrm_program_init(PIO pio, uint sm, uint offset) {
 	pio_sm_init(pio, sm, offset, &c);
 	pio_sm_set_enabled(pio, sm, true);
 }
+
+static inline void st506_wrrm_program_deinit(PIO pio, uint sm) {
+	pio_sm_set_enabled(pio, sm, false);
+}
 %}

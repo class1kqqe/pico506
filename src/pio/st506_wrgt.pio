@@ -30,9 +30,9 @@ static inline void st506_wrgt_program_init(PIO pio, uint sm, uint offset, uint p
 // Alias 2: CTRL       TRANS_COUNT  READ_ADDR    WRITE_ADDR
 // Alias 3: CTRL       WRITE_ADDR   TRANS_COUNT  READ_ADDR
 
-static uint st506_wrgt_ctrl_chan;
-static uint st506_wrgt_work_chan;
-static uint st506_wrgt_trig_chan;
+static int st506_wrgt_ctrl_chan = -1;
+static int st506_wrgt_work_chan = -1;
+static int st506_wrgt_trig_chan = -1;
 static uint st506_wrgt_wrdt_mask;
 
 static uint st506_wrgt_trigger_ctrl_block[8][2];
@@ -116,5 +116,24 @@ static inline void st506_wrgt_program_start(
 	pio_sm_exec_wait_blocking(pio, sm, pio_encode_out(pio_y, 32));
 
 	pio_sm_set_enabled(pio, sm, true);
+}
+
+static inline void st506_wrgt_program_stop(PIO pio, uint sm) {
+	pio_sm_set_enabled(pio, sm, false);
+	if (st506_wrgt_trig_chan >= 0) {
+		dma_channel_cleanup(st506_wrgt_trig_chan);
+		dma_channel_unclaim(st506_wrgt_trig_chan);
+		st506_wrgt_trig_chan = -1;
+	}
+	if (st506_wrgt_work_chan >= 0) {
+		dma_channel_cleanup(st506_wrgt_work_chan);
+		dma_channel_unclaim(st506_wrgt_work_chan);
+		st506_wrgt_work_chan = -1;
+	}
+	if (st506_wrgt_ctrl_chan >= 0) {
+		dma_channel_cleanup(st506_wrgt_ctrl_chan);
+		dma_channel_unclaim(st506_wrgt_ctrl_chan);
+		st506_wrgt_ctrl_chan = -1;
+	}
 }
 %}
