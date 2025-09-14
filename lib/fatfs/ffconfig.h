@@ -3,7 +3,7 @@
 #define FFCONF_DEF 80386
 
 // Function Configurations
-#define FF_FS_READONLY	1
+#define FF_FS_READONLY	0
 #define FF_FS_MINIMIZE	1
 #define FF_USE_FIND		0
 #define FF_USE_MKFS		0
@@ -40,7 +40,7 @@
 // System Configurations
 #define FF_FS_TINY		0
 #define FF_FS_EXFAT		0
-#define FF_FS_NORTC		0
+#define FF_FS_NORTC		1
 #define FF_NORTC_MON	1
 #define FF_NORTC_MDAY	1
 #define FF_NORTC_YEAR	2025
