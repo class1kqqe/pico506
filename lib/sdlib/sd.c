@@ -129,7 +129,7 @@ sd_err_t sd_read(sd_t *sd, uint8_t *data, uint32_t start, uint32_t count) {
 	if (!sd->init_ok)
 		return SD_ERR_NOT_INITIALIZED;
 	if (start + count > sd->sectors)
-		return SD_ERR_READ_OUT_OF_RANGE;
+		return SD_ERR_OUT_OF_RANGE;
 	if (count == 0)
 		return SD_ERR_OK;
 
@@ -162,6 +162,62 @@ sd_err_t sd_read(sd_t *sd, uint8_t *data, uint32_t start, uint32_t count) {
 		sd->command(sd, CMD12_STOP_TRANSMISSION, 0, 0);
 		sd->read_r1(sd, resp);
 		// CMD12 responds with R1b
+		if ((err = sd->wait_busy(sd, resp, 100)))
+			return err;
+	}
+	return err;
+}
+
+sd_err_t sd_write(sd_t *sd, const uint8_t *data, uint32_t start, uint32_t count) {
+	// precondition checks
+	if (!sd->init_ok)
+		return SD_ERR_NOT_INITIALIZED;
+	if (start + count > sd->sectors)
+		return SD_ERR_OUT_OF_RANGE;
+	if (count == 0)
+		return SD_ERR_OK;
+
+	sd_err_t err;
+	uint8_t resp[1];
+	// calculate address based on CCS bit
+	uint32_t addr = sd->ccs ? (start) : (start * SD_BLOCK_LEN);
+
+	// pre-erase blocks if writing multiple
+	if (count > 1) {
+		sd->command(sd, CMD55_APP_CMD, 0, 0);
+		if ((err = sd->read_r1(sd, resp)))
+			return err;
+		sd->command(sd, ACMD23_SET_WR_BLK_ERASE_COUNT, count, 0);
+		if ((err = sd->read_r1(sd, resp)))
+			return err;
+	}
+
+	// request to write single or multiple blocks
+	uint8_t token = count == 1 ? CTRL_TOKEN_START : CTRL_TOKEN_START_MULTIPLE;
+	if (count == 1)
+		sd->command(sd, CMD24_WRITE_BLOCK, addr, 0);
+	else
+		sd->command(sd, CMD25_WRITE_MULTIPLE_BLOCK, addr, 0);
+	if ((err = sd->read_r1(sd, resp)))
+		return err;
+
+	// transfer blocks one by one
+	for (uint32_t i = 0; i < count; i++) {
+		if ((err = sd->write_data(sd, data, SD_BLOCK_LEN, token)))
+			break;
+		if ((err = sd->wait_busy(sd, resp, 500)))
+			return err;
+		data += SD_BLOCK_LEN;
+		if (sd->interrupt_check && sd->interrupt_check(sd->interrupt_param)) {
+			sd->interrupted = true;
+			break;
+		}
+	}
+
+	// if multiple blocks, stop transmission after finished/errored out
+	if (count > 1) {
+		sd->write_stop(sd);
+		// stop transmission token sends busy response
 		if ((err = sd->wait_busy(sd, resp, 100)))
 			return err;
 	}

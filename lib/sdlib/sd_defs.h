@@ -37,6 +37,9 @@
 #define CTRL_TOKEN_START		  0xFE
 #define CTRL_TOKEN_START_MULTIPLE 0xFC
 #define CTRL_TOKEN_STOP			  0xFD
+#define CTRL_DATA_ACCEPTED		  0x05
+#define CTRL_DATA_CRC_ERROR		  0x0B
+#define CTRL_DATA_WRITE_ERROR	  0x0D
 
 #define R1_INVALID		   0x80
 #define R1_PARAM_ERROR	   0x40

@@ -2,6 +2,32 @@
 
 #include "sd_priv.h"
 
+#define ENUM_STR(name) \
+	case name:         \
+		return #name
+
+const char *sd_error_str(sd_err_t err) {
+	switch (err) {
+		ENUM_STR(SD_ERR_OK);
+		ENUM_STR(SD_ERR_CMD_TIMEOUT);
+		ENUM_STR(SD_ERR_BUSY_TIMEOUT);
+		ENUM_STR(SD_ERR_BAD_R1);
+		ENUM_STR(SD_ERR_INIT_IDLE_FAILED);
+		ENUM_STR(SD_ERR_INIT_READY_FAILED);
+		ENUM_STR(SD_ERR_INIT_BAD_ECHO);
+		ENUM_STR(SD_ERR_INIT_POWER_UP_BUSY);
+		ENUM_STR(SD_ERR_READ_TIMEOUT);
+		ENUM_STR(SD_ERR_READ_BAD_TOKEN);
+		ENUM_STR(SD_ERR_READ_BAD_CRC);
+		ENUM_STR(SD_ERR_WRITE_TIMEOUT);
+		ENUM_STR(SD_ERR_WRITE_BAD_TOKEN);
+		ENUM_STR(SD_ERR_WRITE_BAD_CRC);
+		ENUM_STR(SD_ERR_WRITE_ERROR);
+		ENUM_STR(SD_ERR_NOT_INITIALIZED);
+		ENUM_STR(SD_ERR_OUT_OF_RANGE);
+	}
+}
+
 void sd_print_r1(const uint8_t *resp, bool no_bytes) {
 	if (!no_bytes)
 		LT_I("R1 = %02x", resp[0]);
