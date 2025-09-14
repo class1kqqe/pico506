@@ -60,14 +60,18 @@ typedef struct sd_t {
 	void *interrupt_param;
 	volatile bool interrupted;
 
-	// sd_spi.c
-	void *priv;
-	uint cs_pin;
-	bool use_dma;
-	uint tx_dma;
-	uint rx_dma;
-	dma_channel_config tx_config;
-	dma_channel_config rx_config;
+	struct {
+		spi_inst_t *inst;
+		uint sck_pin;
+		uint tx_pin;
+		uint rx_pin;
+		uint cs_pin;
+		bool use_dma;
+		uint tx_dma;
+		uint rx_dma;
+		dma_channel_config tx_config;
+		dma_channel_config rx_config;
+	} spi;
 } sd_t;
 
 // sd.c
@@ -75,7 +79,7 @@ sd_err_t sd_init(sd_t *sd);
 sd_err_t sd_read(sd_t *sd, uint8_t *data, uint32_t start, uint32_t count);
 
 // sd_spi.c
-void sd_spi_init(sd_t *sd, uint32_t freq, uint sck, uint tx, uint rx, uint cs);
+void sd_spi_init(sd_t *sd, uint32_t freq);
 
 // sd_debug.c
 void sd_print_r1(const uint8_t *resp, bool no_bytes);
