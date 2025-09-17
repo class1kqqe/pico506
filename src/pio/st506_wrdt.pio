@@ -4,26 +4,33 @@
 
 got_one:
 	// if WRITE=1 is found, push the pin value
-	// make it last 12 cycles in total: jmp + in + 9 + in
-	in pins, 1 [9]
+	// make it last 16 cycles in total - 1.5x 12
+	// (jmp + in + 13 + in)
+	in pins, 1 [13]
 
 .wrap_target
 	// push the pin value (it should be WRITE=0 at this point)
 	in pins, 1
-	// wait at most 7 cycles for a WRITE=1
-	// this makes the entire .wrap last 8 cycles
+	// wait at most 12 cycles for a WRITE=1
+	// this makes the entire .wrap last 13 cycles
 	jmp pin got_one
 	jmp pin got_one
 	jmp pin got_one
 	jmp pin got_one
 	jmp pin got_one
 	jmp pin got_one
+	jmp pin got_one
+	jmp pin got_one
+	jmp pin got_one
+	jmp pin got_one
+	jmp pin got_one
+	// for some reason, making this 1/12th longer makes it handle long strings of zeroes better
 	jmp pin got_one
 .wrap
 
 % c-sdk {
 static inline void st506_wrdt_program_init(PIO pio, uint sm, uint offset, uint pin_write, uint freq) {
-	float clkdiv	= (float)clock_get_hz(clk_sys) / (float)(freq * 8);
+	float clkdiv	= (float)clock_get_hz(clk_sys) / (float)(freq * 12);
 	pio_sm_config c = st506_wrdt_program_get_default_config(offset);
 	sm_config_set_clkdiv(&c, clkdiv);
 	sm_config_set_in_pin_base(&c, pin_write);
