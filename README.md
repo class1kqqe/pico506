@@ -186,7 +186,14 @@ Configuration options (`config.h`) that should be adapted to each drive type:
 5. `WRITE_FAULT` is not implemented.
 6. There is currently no way to change the HDD image on-the-fly; the image filename is hardcoded in `pico506.c`.
 
-## LICENSE
+## Screenshots
+
+Here are some screenshots of the RLL(2,7) emulator in action, in a Toshiba T1200:
+
+![CheckIt](.github/images/checkit.webp)
+![MS-DOS Diagnostics](.github/images/msd.webp)
+
+## License
 
 This project is licensed under the [General Public License](LICENSE).
 
