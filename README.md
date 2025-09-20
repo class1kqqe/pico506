@@ -2,6 +2,9 @@
 
 The smallest and cheapest ST-506/RLL/MFM hard drive emulator.
 
+*Read the full story of building this
+project: [Emulating a 1987 proprietary RLL hard drive](https://kuba.szczodrzynski.pl/posts/toshiba-t1200/rll-hdd-emulator/)*
+
 ## Introduction
 
 Pico506 is a simple, yet universal emulator of old RLL/MFM hard drives using the ST-506 signaling and control interface.
