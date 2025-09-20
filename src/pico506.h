@@ -74,3 +74,9 @@ int storage_open(pico506_t *pico, const char *filename);
 void storage_close(pico506_t *pico);
 int storage_read(pico506_t *pico, uint pos, void *data, uint len, sd_interrupt_t interrupt_check);
 int storage_write(pico506_t *pico, uint pos, const void *data, uint len);
+
+// clicker.c
+void clicker_start(pico506_t *pico);
+void clicker_enqueue(uint count);
+void clicker_seek(pico506_t *pico, uint count);
+void clicker_pulse(pico506_t *pico, uint freq, uint us);

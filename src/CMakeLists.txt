@@ -1,5 +1,6 @@
 add_executable(
 	${PROJECT_NAME}
+	clicker.c
 	diskio.c
 	pico506.c
 	st506.c

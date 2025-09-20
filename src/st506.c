@@ -35,6 +35,10 @@ int st506_start(pico506_t *pico) {
 	if (pico->st506.write_block == NULL)
 		goto err;
 
+	// start the clicker
+	LT_D("Starting clicker...");
+	clicker_start(pico);
+
 	// initialize GPIOs
 	LT_V("Initializing GPIOs...");
 	gpio_init_mask((1 << PIN_SEEK_COMPLETE) | (1 << PIN_TRACK_0) | (1 << PIN_READY));
@@ -211,6 +215,8 @@ void st506_on_write(pico506_t *pico, uint trans_count, uint end_addr) {
 
 	// store last activity time
 	pico->st506.last_activity = get_absolute_time();
+	// run the clicker on write
+	clicker_enqueue(CYL_INVALID);
 }
 
 void st506_on_head(pico506_t *pico, uint hd) {
@@ -234,6 +240,8 @@ void st506_on_head(pico506_t *pico, uint hd) {
 
 	// store last activity time
 	pico->st506.last_activity = get_absolute_time();
+	// run the clicker on head change
+	clicker_enqueue(CYL_INVALID);
 }
 
 void st506_on_seek(pico506_t *pico, uint cyl) {
@@ -249,6 +257,12 @@ void st506_on_seek(pico506_t *pico, uint cyl) {
 	if (pico->st506.cyl == CYL_INVALID) {
 		// cannot write if the current cylinder is invalid
 		pico->st506.write_any = false;
+	} else {
+		// run the clicker on seek
+		if (cyl >= pico->st506.cyl)
+			clicker_enqueue(cyl - pico->st506.cyl);
+		else
+			clicker_enqueue(pico->st506.cyl - cyl);
 	}
 
 	if (pico->st506.write_any) {

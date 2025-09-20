@@ -17,6 +17,8 @@
 #define PIN_INDEX		  6
 #define PIN_TRACK_0		  9
 #define PIN_READY		  8
+// Buzzer
+#define PIN_BUZZER		  15
 // SD Card
 #define PIN_SD_SCK		  18
 #define PIN_SD_MOSI		  19
